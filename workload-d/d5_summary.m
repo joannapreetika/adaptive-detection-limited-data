@@ -57,15 +57,15 @@ end
 fprintf('\n===== D3: light loading under contamination (SNR = %.1f dB) =====\n', r3.SNR_dB);
 ik = find(r3.Klist == 32);
 for is = 1:numel(scen)
-    fprintf('\n%s, K = 32: Pd clean-unloaded | contaminated unloaded | best LNR (dB) -> Pd | Pfa/1e-3 there\n', ...
-        scen{is});
+    fprintf(['\n%s, K = 32: Pd clean-unloaded | contaminated unloaded | best LNR (dB) -> Pd | ' ...
+             'clean Pd at that LNR | Pfa/1e-3 there\n'], scen{is});
     for ic = 2:numel(r3.case_m)
         for it = 1:3
             lb = r3.LNR_best(is, ik, ic, it);
             il = find(r3.LNR_dB == lb) + 1;
-            fprintf('  %-10s %-5s: %.3f | %.3f | %2d -> %.3f | %.2f\n', r3.case_name{ic}, tests{it}, ...
+            fprintf('  %-10s %-5s: %.3f | %.3f | %2d -> %.3f | %.3f | %.2f\n', r3.case_name{ic}, tests{it}, ...
                 r3.Pd(is, ik, 1, 1, it), r3.Pd(is, ik, ic, 1, it), lb, r3.Pd_best(is, ik, ic, it), ...
-                r3.Pfa_emp(is, ik, ic, il, it)/r3.Pfa);
+                r3.Pd(is, ik, 1, il, it), r3.Pfa_emp(is, ik, ic, il, it)/r3.Pfa);
         end
     end
 end
@@ -77,11 +77,18 @@ for is = 1:numel(scen)
         fprintf('\n%s, %s:\n', scen{is}, tests{it});
         Tb = table(r4.Klist.', round(r4.Pd_plain(is, :, it).', 3), round(r4.Pd_bload(is, :, it).', 3), ...
             r4.LNR_best(is, :, it).', round(r4.Pd_bfs(is, :, it).', 3), r4.rho_best(is, :, it).', ...
+            round(r4.rho_best_lnr(is, :, it).', 1), ...
             round(r4.Pd_lw(is, :, it).', 3), round(r4.gap_lw(is, :, it).', 3), ...
             round(r4.rho_lw_mean(is, :).', 3), ...
-            'VariableNames', {'K', 'plain', 'best_load', 'LNR', 'best_fs', 'rho', 'LW', 'LW_gap', 'mean_rho_LW'});
+            'VariableNames', {'K', 'plain', 'best_load', 'LNR', 'best_fs', 'rho', 'rho_as_LNR', ...
+                              'LW', 'LW_gap', 'mean_rho_LW'});
         disp(Tb);
     end
+end
+fprintf('rho -> equivalent loading on true R (dB re sigma2):\n');
+for is = 1:numel(scen)
+    fprintf('  %s: rho = %s\n       LNR = %s\n', scen{is}, mat2str(r4.rho_fs, 2), ...
+        mat2str(round(r4.lnr_equiv(is, :), 1)));
 end
 fprintf('Largest LW shortfall vs tuned optimum: ');
 [g, idx] = min(r4.gap_lw(:));

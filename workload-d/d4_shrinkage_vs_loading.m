@@ -3,11 +3,15 @@
 % transform; loading and shrinkage break CFAR):
 %   plain S        - only for K > N (N/A for K <= N)
 %   best loading   - load_S, LNR swept over 0:2:20 dB, best per K, test and scenario
-%   best fixed rho - fixed_shrink, rho swept over 0:0.1:1, best per K, test and scenario
-%                    (rho = 0 is plain S, so it is skipped for K <= N)
+%   best fixed rho - fixed_shrink, rho swept over 0:0.1:1 plus log-spaced 1e-4 ... 0.05,
+%                    best per K, test and scenario (rho = 0 is plain S, skipped for K <= N)
 %   Ledoit-Wolf    - lw_shrink, data-driven rho, no tuning
-% CUT SNR is D1's operating point. Run d1_steering_mismatch.m first.
-% "Best" picks the max of 11 noisy Pd estimates, which biases it up by roughly one
+% Shrinking toward (trace(Rhat)/N)*I is loading with lam = rho/(1-rho)*trace(Rhat)/N,
+% and with 35 dB jammers trace(R)/N ~ 1e4, so rho = 0.1 already means ~30 dB of loading.
+% The small-rho points let fixed shrinkage reach the light-loading range;
+% lnr_equiv is the loading (dB re sigma2) each rho corresponds to on the true R.
+% CUT SNR: clairvoyant matched filter Pd = 0.9 (10.8 dB, as in Workload C).
+% "Best" picks the max of many noisy Pd estimates, which biases it up by roughly one
 % standard error (~0.006 at Pd ~ 0.9 with 5e3 trials).
 % S1 = shared scenario (-40/10/20 deg), S2 = S1 + mainlobe jammer at 4 deg (dashed).
 % SDET_QUICK=1: 1/20 of the trials, results in results/quick/.
@@ -18,14 +22,15 @@ addpath('../shared-functions');
 %% Scenario
 quick = strcmp(getenv('SDET_QUICK'), '1');
 outdir = 'results'; if quick, outdir = 'results/quick'; end
-load(fullfile(outdir, 'd1_steering_mismatch.mat'), 'SNR_dB');
 N = 16; sigma2 = 1;
 theta_t = 0; jnr_dB = 35; Pfa = 1e-3;
+SNR_dB = snr_clair(0.9, Pfa);      % clairvoyant Pd = 0.9
+fprintf('CUT SNR (clairvoyant Pd = 0.9): %.2f dB\n', SNR_dB);
 scen    = {'S1', 'S2'};
 theta_j = {[-40 10 20], [-40 4 10 20]};
 Klist   = [8 12 16 24 32 48];
 LNR_dB  = 0:2:20;
-rho_fs  = 0:0.1:1;
+rho_fs  = unique([0:0.1:1, kron(10.^(-4:-2), [1 2 5])]);   % 0, 1e-4 ... 5e-2, 0.1 ... 1
 M0 = 1e5;                          % trials per threshold
 M1 = 5e3;                          % trials per Pd point (and LW rho samples per K)
 if quick, M0 = M0/20; M1 = M1/20; end
@@ -37,6 +42,10 @@ p = steer(N, theta_t);
 nS = numel(scen); nK = numel(Klist); nL = numel(LNR_dB); nR = numel(rho_fs);
 R = cell(1, nS);
 for is = 1:nS, R{is} = make_cov(N, sigma2, theta_j{is}, jnr_dB); end
+lnr_equiv = nan(nS, nR);           % loading (dB re sigma2) equivalent to each rho, on true R
+for is = 1:nS
+    lnr_equiv(is, :) = 10*log10(rho_fs ./ (1 - rho_fs) * real(trace(R{is}))/N / sigma2);
+end
 
 %% Thresholds and Pd for every method setting
 Pd_plain = nan(nS, nK, 3);      eta_plain = nan(nS, nK, 3);
@@ -90,6 +99,8 @@ end
 %% Best tuned settings (per scenario, K and test)
 [Pd_bload, i_l] = max(Pd_load, [], 3);  Pd_bload = squeeze(Pd_bload);  LNR_best = LNR_dB(squeeze(i_l));
 [Pd_bfs,   i_r] = max(Pd_fs,   [], 3);  Pd_bfs   = squeeze(Pd_bfs);    rho_best = rho_fs(squeeze(i_r));
+i_r = squeeze(i_r); rho_best_lnr = nan(size(i_r));      % loading equivalent of the best rho
+for is = 1:nS, rho_best_lnr(is, :, :) = reshape(lnr_equiv(is, i_r(is, :, :)), 1, nK, 3); end
 Pd_tuned = max(Pd_bload, Pd_bfs);
 gap_lw   = Pd_lw - Pd_tuned;                 % < 0: LW below the tuned optimum
 rho_lw_mean = mean(rho_lw, 3);
@@ -101,8 +112,10 @@ for is = 1:nS
         fprintf('\n%s, %s: Pd at SNR = %.1f dB\n', scen{is}, tests{it}, SNR_dB);
         Tb = table(round(Pd_plain(is, :, it).', 3), round(Pd_bload(is, :, it).', 3), ...
             LNR_best(is, :, it).', round(Pd_bfs(is, :, it).', 3), rho_best(is, :, it).', ...
+            round(rho_best_lnr(is, :, it).', 1), ...
             round(Pd_lw(is, :, it).', 3), round(rho_lw_mean(is, :).', 3), round(gap_lw(is, :, it).', 3), ...
-            'VariableNames', {'plain', 'best_load', 'LNR', 'best_fs', 'rho', 'LW', 'mean_rho_LW', 'LW_gap'}, ...
+            'VariableNames', {'plain', 'best_load', 'LNR', 'best_fs', 'rho', 'rho_as_LNR', 'LW', ...
+                              'mean_rho_LW', 'LW_gap'}, ...
             'RowNames', compose('K=%d', Klist));
         disp(Tb);
     end
@@ -138,7 +151,7 @@ for is = 1:nS
     title(sprintf('Ledoit-Wolf \\rho, %s', scen{is}));
     legend('Location', 'northeast');
 end
-sgtitle(sprintf(['Shrinkage vs loading, SNR = %.1f dB, P_{FA} = 10^{-3} ' ...
+sgtitle(sprintf(['Shrinkage vs loading, SNR = %.1f dB (clairvoyant P_D = 0.9), P_{FA} = 10^{-3} ' ...
     '(best = tuned per K and test; S2 dashed)'], SNR_dB));
 
 %% Save
@@ -148,4 +161,5 @@ save(fullfile(outdir, 'd4_shrinkage_vs_loading.mat'), 'N', 'sigma2', 'theta_t', 
      'jnr_dB', 'Pfa', 'scen', 'Klist', 'LNR_dB', 'rho_fs', 'SNR_dB', 'M0', 'M1', 'seed', 'quick', ...
      'tests', 'methods', 'Pd_plain', 'eta_plain', 'Pd_load', 'eta_load', 'Pd_fs', 'eta_fs', ...
      'Pd_lw', 'eta_lw', 'rho_lw', 'Pd_bload', 'LNR_best', 'Pd_bfs', 'rho_best', 'Pd_tuned', ...
+     'lnr_equiv', 'rho_best_lnr', ...
      'gap_lw', 'rho_lw_mean', 'Pd_method');

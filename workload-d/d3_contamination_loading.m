@@ -1,9 +1,9 @@
 %% D3: does light diagonal loading recover the loss from contaminated training?
 % Same contamination model as D2 (m outliers with the target's steering). The CUT SNR
-% is fixed at D1's operating point (all tests Pd ~ 0.9 with clean training, K = 32).
+% is fixed where the clairvoyant matched filter has Pd = 0.9 (10.8 dB, as in Workload C),
+% so loaded detectors are not saturated at Pd = 1.
 % Loading Rhat = S/K + lam*I (load_S). Thresholds are calibrated on CLEAN training with
 % the same loading and the same R (loaded tests are not CFAR), per scenario and K.
-% Run d1_steering_mismatch.m first (its SNR is used here).
 % S1 = shared scenario (-40/10/20 deg), S2 = S1 + mainlobe jammer at 4 deg (dashed).
 % SDET_QUICK=1: 1/20 of the trials, results in results/quick/.
 
@@ -13,9 +13,10 @@ addpath('../shared-functions');
 %% Scenario
 quick = strcmp(getenv('SDET_QUICK'), '1');
 outdir = 'results'; if quick, outdir = 'results/quick'; end
-load(fullfile(outdir, 'd1_steering_mismatch.mat'), 'SNR_dB');
 N = 16; sigma2 = 1;
 theta_t = 0; jnr_dB = 35; Pfa = 1e-3;
+SNR_dB = snr_clair(0.9, Pfa);      % clairvoyant Pd = 0.9
+fprintf('CUT SNR (clairvoyant Pd = 0.9): %.2f dB\n', SNR_dB);
 scen    = {'S1', 'S2'};
 theta_j = {[-40 10 20], [-40 4 10 20]};
 Klist   = [24 32 48];
@@ -120,7 +121,7 @@ for im = 1:nm
     end
 end
 sgtitle(sprintf(['P_D vs light loading with contaminated training, K = 32, SNR = %.1f dB ' ...
-    '(thin = clean training; S2 dashed)'], SNR_dB));
+    '(clairvoyant P_D = 0.9; thin = clean training; S2 dashed)'], SNR_dB));
 
 %% Save
 if ~exist(outdir, 'dir'), mkdir(outdir); end
