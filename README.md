@@ -57,3 +57,28 @@ Used by every workload unless an experiment deliberately changes it:
 | False-alarm rate | Pfa = 10⁻³ |
 | SNR | clairvoyant output SINR, \|α\|² pᴴR⁻¹p |
 | Diagonal loading | R̂ = S/K + λI, passed to `detect`/`calib` as `S + K*λ*I`; LNR = λ/σ² in dB |
+
+### Plot and `.mat` format (temporary, remove once the project is done)
+
+**Plots**
+
+- Plain `figure`, `subplot`, `plot` with MATLAB's **default figure settings and default colours**. Don't set colours, themes or figure sizes.
+- Tell series apart with **marker shapes** (`'o'`, `'s'`, `'^'`, `'d'`, ...), **line styles** (`'-'`, `'--'`, `':'`) and `'LineWidth'`.
+- Keep the same plotting order for the same quantities across panels so the default colours match. To give a second set of curves (e.g. unloaded, dashed) the same colours, use `set(gca, 'ColorOrderIndex', 1)` before plotting them.
+- Reference lines (nominal Pfa, clairvoyant Pd, 3 dB, 2J, ...) with `yline` / `xline`, no colour given.
+- Every panel gets a title and axis labels with units; label series with `'DisplayName'` and add a `legend`. Use a log y-axis for Pfa, with decade ticks.
+- Save with `saveas(gcf, 'results/<script name>.png')`.
+- The saved PNG follows each person's MATLAB theme (dark or light). For the final deck, regenerate all figures with the same theme so the slides match.
+
+**`.mat` files**
+
+- One per script: `save('results/<script name>.mat', ...)`, saving **plain named variables** (not one big struct), so `load` gives them directly.
+- Include:
+  - the scenario parameters used (`N`, `theta_t`, `theta_j`, `jnr_dB`, `Pfa`, ... as relevant),
+  - the swept values (e.g. K grid, `LNR_dB`, SNR grid),
+  - the trial counts (`M`, `M0`, `M1`, ...),
+  - `tests = {'AMF', 'Kelly', 'Rao'}` when results are per test,
+  - the results themselves (thresholds, Pd, Pfa, losses, ...).
+- Result arrays have one dimension per swept variable, in the order they are swept, with the **test as the last dimension**: e.g. `Pd(K, LNR, test)`, `pfa(scenario, K, LNR, test)`.
+- Quantities in dB carry a `_dB` suffix (`LNR_dB`, `SNR_dB`, `jnr_dB`). SNR always means the clairvoyant output SINR, \|α\|² pᴴR⁻¹p.
+- Set `rng(...)` in the script so results can be regenerated exactly.
